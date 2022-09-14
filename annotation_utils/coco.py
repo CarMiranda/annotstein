@@ -1,17 +1,53 @@
 import json
 import pathlib
-from typing import Dict, Any
+import typing as t
 import itertools
 from datetime import datetime
 from PIL import Image
+from pydantic import BaseModel
+
+
+class COCOImage(BaseModel):
+    id: int
+    file_name: str
+    height: t.Optional[int]
+    width: t.Optional[int]
+
+
+class COCOAnnotation(BaseModel):
+    id: int
+    image_id: int
+    bbox: t.Tuple[float, float, float, float]
+    category_id: int
+
+
+class COCOCategory(BaseModel):
+    id: int
+    supercategory: t.Optional[str]
+    name: str
+
+
+class COCOInfo(BaseModel):
+    description: str
+    version: str
+    date_created: str
+
+
+class COCOModel(BaseModel):
+    images: t.List[COCOImage]
+    annotations: t.List[COCOAnnotation]
+    categories: t.List[COCOCategory]
+    info: COCOInfo
 
 
 class COCO:
-    def __init__(self, index: Dict[str, Any]):
-        self.info = index["info"]
-        self.images = index["images"]
-        self.annotations = index["annotations"]
-        self.categories = index["categories"]
+    def __init__(self, index: COCOModel):
+        self.info = index.info
+        self.images = index.images
+        self.annotations = index.annotations
+        self.categories = index.categories
+        self.images_index: t.Dict[int, COCOImage]
+        self.annotation_index: t.Dict[int, COCOAnnotation]
 
         self.create_indices()
 
@@ -19,32 +55,32 @@ class COCO:
         self.images_to_annotations = {}
         self.categories_to_annotations = {}
         self.category_keys_to_id = {}
-        self.images_index = {image["id"]: image for image in self.images}
+        self.images_index = {image.id: image for image in self.images}
         self.annotation_index = {
-            annotation["id"]: annotation for annotation in self.annotations
+            annotation.id: annotation for annotation in self.annotations
         }
-        self.category_index = {category["id"]: category for category in self.categories}
+        self.category_index = {category.id: category for category in self.categories}
 
         for annotation in self.annotations:
-            if annotation["image_id"] in self.images_to_annotations:
-                self.images_to_annotations[annotation["image_id"]].append(
-                    annotation["id"]
+            if annotation.image_id in self.images_to_annotations:
+                self.images_to_annotations[annotation.image_id].append(
+                    annotation.id
                 )
             else:
-                self.images_to_annotations[annotation["image_id"]] = [annotation["id"]]
+                self.images_to_annotations[annotation.image_id] = [annotation.id]
 
-            if annotation["category_id"] in self.categories_to_annotations:
-                self.categories_to_annotations[annotation["category_id"]].append(
-                    annotation["id"]
+            if annotation.category_id in self.categories_to_annotations:
+                self.categories_to_annotations[annotation.category_id].append(
+                    annotation.id
                 )
             else:
-                self.categories_to_annotations[annotation["category_id"]] = [
-                    annotation["id"]
+                self.categories_to_annotations[annotation.category_id] = [
+                    annotation.id
                 ]
 
         for category in self.categories:
-            category_key = (category["supercategory"], category["name"])
-            self.category_keys_to_id[category_key] = category["id"]
+            category_key = (category.supercategory, category.name)
+            self.category_keys_to_id[category_key] = category.id
 
     @staticmethod
     def from_file(path: pathlib.Path) -> "COCO":
@@ -54,39 +90,9 @@ class COCO:
         return COCO.from_dict(index)
 
     @staticmethod
-    def validate(index: Dict[str, Any]) -> None:
-        top = all(
-            [
-                entry in index
-                for entry in ["info", "images", "annotations", "categories"]
-            ]
-        )
+    def from_dict(index: t.Dict[str, t.Any]) -> "COCO":
 
-        if not top:
-            pass  # raise Exception("Top-level structure is not valid.")
-
-        info = all(
-            [
-                entry in index["info"]
-                for entry in [
-                    "description",
-                    "url",
-                    "version",
-                    "year",
-                    "contributor",
-                    "date_created",
-                ]
-            ]
-        )
-
-        if not info:
-            pass  # raise Exception("Info structure is not valid.")
-
-    @staticmethod
-    def from_dict(index: Dict[str, Any]) -> "COCO":
-        COCO.validate(index)
-
-        return COCO(index)
+        return COCO(COCOModel(**index))
 
     @staticmethod
     def merge(*indices: "COCO") -> "COCO":
@@ -108,27 +114,27 @@ class COCO:
         for index in indices:
             c2c = {}  # old categories to new categories
             for category in index.categories:
-                category_key = (category["name"], category["supercategory"])
+                category_key = (category.name, category.supercategory)
                 if category_key not in category_keys:
-                    c2c[category["id"]] = c_category
-                    category["id"] = c_category
+                    c2c[category.id] = c_category
+                    category.id = c_category
                     category_keys[category_key] = c_category
 
                     categories.append(category)
                     c_category += 1
                 else:
-                    c2c[category["id"]] = category_keys[category_key]
+                    c2c[category.id] = category_keys[category_key]
 
             i2i = {}  # old images to new images
             for image in index.images:
-                i2i[image["id"]] = c_image
-                image["id"] = c_image
+                i2i[image.id] = c_image
+                image.id = c_image
                 c_image += 1
 
             for annotation in index.annotations:
-                annotation["id"] = c_annotation
-                annotation["image_id"] = i2i[annotation["image_id"]]
-                annotation["category_id"] = c2c[annotation["category_id"]]
+                annotation.id = c_annotation
+                annotation.image_id = i2i[annotation.image_id]
+                annotation.category_id = c2c[annotation.category_id]
                 c_annotation += 1
 
         now = datetime.now()
@@ -162,41 +168,62 @@ class COCO:
 
         prefix_p = pathlib.Path(prefix)
         for image in self.images:
-            image["file_name"] = str(prefix_p / pathlib.Path(image["file_name"]).name)
+            image.file_name = str(prefix_p / pathlib.Path(image.file_name).name)
 
         return self
 
     def to_dict(self):
         return {
-            "info": self.info,
-            "images": self.images,
-            "annotations": self.annotations,
-            "categories": self.categories,
+            "info": self.info.dict(exclude_unset=True),
+            "images": [i.dict(exclude_unset=True) for i in self.images],
+            "annotations": [a.dict(exclude_unset=True) for a in self.annotations],
+            "categories": [c.dict(exclude_unset=True) for c in self.categories],
         }
 
     def to_classtree(self, root_dir: pathlib.Path, output_dir: pathlib.Path):
         output_dir.mkdir(exist_ok=True)
 
         for category in self.categories:
-            (output_dir / category["name"]).mkdir(exist_ok=True)
+            (output_dir / category.name).mkdir(exist_ok=True)
 
         for annotation in self.annotations:
-            bbox = annotation["bbox"]
-            image = self.images_index[annotation["image_id"]]
-            category = self.category_index[annotation["category_id"]]
+            bbox = annotation.bbox
+            image = self.images_index[annotation.image_id]
+            category = self.category_index[annotation.category_id]
 
-            img = Image.open(root_dir / image["file_name"])
+            img = Image.open(root_dir / image.file_name)
+
+            if all(0 <= b <= 1 for b in bbox):
+                width, height = img.size
+                bbox = (
+                    int(bbox[0] * width),
+                    int(bbox[1] * height),
+                    int(bbox[2] * width),
+                    int(bbox[3] * height)
+                )
+            else:
+                bbox = (
+                    int(bbox[0]),
+                    int(bbox[1]),
+                    int(bbox[2]),
+                    int(bbox[3])
+                )
+
             crop = img.crop((bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]))
             dest_path = (
-                output_dir / category["name"] / image["file_name"].replace("/", "_")
+                output_dir / category.name / image.file_name.replace("/", "_")
             )
             crop.save(dest_path)
 
-    def to_relative_coordinates(self, root_dir: pathlib.Path) -> "COCO":
+    def to_relative_coordinates(self, root_dir: t.Optional[pathlib.Path] = None) -> "COCO":
+        if root_dir is None:
+            # Ensure image entries include width and height
+            pass
+
         for annotation in self.annotations:
-            bbox = annotation["bbox"]
-            image = self.images_index[annotation["image_id"]]
-            img = Image.open(root_dir / image["file_name"])
+            bbox = annotation.bbox
+            image = self.images_index[annotation.image_id]
+            img = Image.open(root_dir / image.file_name)
             width, height = img.size
             rel_bbox = (
                 bbox[0] / width,
@@ -204,15 +231,19 @@ class COCO:
                 bbox[2] / width,
                 bbox[3] / height,
             )
-            annotation["bbox"] = rel_bbox
+            annotation.bbox = rel_bbox
 
         return self
 
-    def to_absolute_coordinates(self, root_dir: pathlib.Path) -> "COCO":
+    def to_absolute_coordinates(self, root_dir: t.Optional[pathlib.Path] = None) -> "COCO":
+        if root_dir is None:
+            # Ensure image entries include width and height
+            pass
+
         for annotation in self.annotations:
-            bbox = annotation["bbox"]
-            image = self.images_index[annotation["image_id"]]
-            img = Image.open(root_dir / image["file_name"])
+            bbox = annotation.bbox
+            image = self.images_index[annotation.image_id]
+            img = Image.open(root_dir / image.file_name)
             width, height = img.size
             abs_bbox = (
                 bbox[0] * width,
@@ -220,6 +251,6 @@ class COCO:
                 bbox[2] * width,
                 bbox[3] * height,
             )
-            annotation["bbox"] = abs_bbox
+            annotation.bbox = abs_bbox
 
         return self
