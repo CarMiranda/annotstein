@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools", "wheel", "setuptools_scm==6.3.1"]
+
+[project]
+name = "annotation-utils"
+requires-python = ">=3.8"
+dependencies = [
+    "pillow ~= 9.2.0",
+    "pydantic ~= 1.10.2"
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = [
+    "pytest ~= 7.1.0",
+    "coverage ~= 6.3.2"
+]
+docs = [
+    "sphinx ~= 4.5.0",
+    "sphinx-book-theme ~= 0.3.2"
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py38"]
+include = '\.pyi?$'
+exclude = '''
+(
+    \.git          # exclude a few common directories in the
+  | \.mypy_cache   # root of the project
+  | \.venv
+  | venv
+  | build
+  | dist
+  | whl
+)
+'''
+
+[tool.setuptools_scm]
+write_to = "annotation_utils/_version.py"
+git_describe_command = "git describe --tags --long --match *[0-9]*"
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+testpaths = [
+  "tests"
+]
