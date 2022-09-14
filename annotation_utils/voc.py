@@ -97,4 +97,3 @@ class VOC:
             "annotations": list(itertools.chain(*annotations.values())),
             "categories": list(categories.values()),
         }
-

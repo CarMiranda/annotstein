@@ -6,7 +6,8 @@ name = "annotation-utils"
 requires-python = ">=3.8"
 dependencies = [
     "pillow ~= 9.2.0",
-    "pydantic ~= 1.10.2"
+    "pydantic ~= 1.10.2",
+    "typer ~= 0.6.1"
 ]
 dynamic = ["version"]
 

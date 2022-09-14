@@ -5,6 +5,7 @@ import itertools
 from datetime import datetime
 from PIL import Image
 
+
 class COCO:
     def __init__(self, index: Dict[str, Any]):
         self.info = index["info"]
@@ -201,12 +202,11 @@ class COCO:
                 bbox[0] / width,
                 bbox[1] / height,
                 bbox[2] / width,
-                bbox[3] / height
+                bbox[3] / height,
             )
             annotation["bbox"] = rel_bbox
 
         return self
-
 
     def to_absolute_coordinates(self, root_dir: pathlib.Path) -> "COCO":
         for annotation in self.annotations:
@@ -218,9 +218,8 @@ class COCO:
                 bbox[0] * width,
                 bbox[1] * height,
                 bbox[2] * width,
-                bbox[3] * height
+                bbox[3] * height,
             )
             annotation["bbox"] = abs_bbox
 
         return self
-
