@@ -1,6 +1,6 @@
 import typer
 
-from annotation_utils import cli
+from annotstein import cli
 
 
 if __name__ == "__main__":

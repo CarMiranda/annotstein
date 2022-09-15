@@ -4,8 +4,8 @@ import typing as t
 import typer
 from collections import Counter
 
-from annotation_utils.coco import COCO
-from annotation_utils.voc import VOC
+from annotstein.coco import COCO
+from annotstein.voc import VOC
 
 
 class CoordinateKind(str, enum.Enum):

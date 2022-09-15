@@ -2,7 +2,7 @@
 requires = ["setuptools", "wheel", "setuptools_scm==6.3.1"]
 
 [project]
-name = "annotation-utils"
+name = "annotstein"
 requires-python = ">=3.8"
 dependencies = [
     "pillow ~= 9.2.0",
@@ -38,7 +38,7 @@ exclude = '''
 '''
 
 [tool.setuptools_scm]
-write_to = "annotation_utils/_version.py"
+write_to = "annotstein/_version.py"
 git_describe_command = "git describe --tags --long --match *[0-9]*"
 
 [tool.isort]
