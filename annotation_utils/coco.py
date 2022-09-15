@@ -5,6 +5,7 @@ import itertools
 from datetime import datetime
 from PIL import Image
 from pydantic import BaseModel
+import random
 
 
 class COCOImage(BaseModel):
@@ -19,6 +20,7 @@ class COCOAnnotation(BaseModel):
     image_id: int
     bbox: t.Tuple[float, float, float, float]
     category_id: int
+    area: t.Optional[float]
 
 
 class COCOCategory(BaseModel):
@@ -30,7 +32,8 @@ class COCOCategory(BaseModel):
 class COCOInfo(BaseModel):
     description: str
     version: str
-    date_created: str
+    date_created: t.Optional[str]
+    contributor: t.Optional[str]
 
 
 class COCOModel(BaseModel):
@@ -139,13 +142,14 @@ class COCO:
 
         now = datetime.now()
 
+        contributors = ", ".join([i.info.contributor for i in indices if i.info.contributor is not None])
         new_index = {
             "info": {
                 "description": "",
                 "url": "",
                 "version": "1.0.0",
                 "year": now.year,
-                "contributor": "Buawei",
+                "contributor": contributors,
                 "date_created": str(now),
             },
             "images": list(itertools.chain(*[index.images for index in indices])),
@@ -254,3 +258,39 @@ class COCO:
             annotation.bbox = abs_bbox
 
         return self
+
+    def split(self, test_ratio: float, stratify: bool = False) -> t.Tuple["COCO", "COCO"]:
+        n_samples = len(self.annotations)
+        n_test = int(n_samples * test_ratio)
+        all_indices = list(range(n_samples))
+        random.shuffle(all_indices)
+        test_indices = all_indices[:n_test]
+        train_indices = all_indices[n_test:]
+
+        train_annotations = [self.annotations[i] for i in train_indices]
+        train_images_ids = set(a.image_id for a in train_annotations)
+        train_images = [self.images_index[image_id] for image_id in train_images_ids]
+
+        test_annotations = [self.annotations[i] for i in test_indices]
+        test_images_ids = set(a.image_id for a in test_annotations)
+        test_images = [self.images_index[image_id] for image_id in test_images_ids]
+
+        train_index = COCO(
+            COCOModel(
+                info=self.info,
+                images=train_images,
+                annotations=train_annotations,
+                categories=self.categories
+            )
+        )
+        test_index = COCO(
+            COCOModel(
+                info=self.info,
+                images=test_images,
+                annotations=test_annotations,
+                categories=self.categories,
+            )
+        )
+
+        return train_index, test_index
+

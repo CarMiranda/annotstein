@@ -2,6 +2,7 @@ import enum
 import pathlib
 import typing as t
 import typer
+from collections import Counter
 
 from annotation_utils.coco import COCO
 from annotation_utils.voc import VOC
@@ -89,6 +90,51 @@ def rebase(
     prefix: pathlib.Path = typer.Option(
         ..., help="Prefix to use for each image entry."
     ),
-    output_path: pathlib.Path = typer.Option(..., help="Target file to write into."),
+    output_path: pathlib.Path = typer.Option(..., help="Target file to write to."),
 ):
     COCO.from_file(input_path).rebase_filenames(prefix).write(output_path)
+
+@app.command(help="Print statistics about the given annotation file.")
+def stats(
+    *,
+    input_path: pathlib.Path = typer.Option(..., help="Source file to read from.")
+):
+    coco = COCO.from_file(input_path)
+    category_counts = Counter([coco.category_index[c.category_id].name for c in coco.annotations])
+
+    print("Category counts:")
+    for name, count in category_counts.items():
+        print(f"- {name}: {count}")
+
+@app.command(help="Split a given dataset index into train and test indices.")
+def split(
+    *,
+    input_path: pathlib.Path = typer.Option(..., help="Source file to read from."),
+    output_path: pathlib.Path = typer.Option(..., help="Target file to write to."),
+    test_ratio: float = typer.Option(..., help="Ratio (between 0 and 1) for the test split."),
+    train_ratio: t.Optional[float] = typer.Option(None, help="Ratio (between 0 and 1) for the train split. Use in with test_ratio in order to also get a validation split.")
+):
+    coco = COCO.from_file(input_path)
+    if train_ratio is None:
+        coco_train, coco_test = coco.split(test_ratio)
+    else:
+        coco_train, coco_val = coco.split(test_ratio=(1 - train_ratio))
+        coco_val, coco_test = coco_val.split(test_ratio=test_ratio / (1 - train_ratio))
+
+
+    if output_path.is_dir():
+        train_path = output_path / (input_path.stem + "_train.json")
+        val_path = output_path / (input_path.stem + "_val.json")
+        test_path = output_path / (input_path.stem + "_test.json")
+    else:
+        train_path = output_path.parent / (output_path.stem + "_train.json")
+        val_path = output_path.parent / (output_path.stem + "_val.json")
+        test_path = output_path.parent / (output_path.stem + "_test.json")
+
+    coco_train.write(train_path)
+    coco_test.write(test_path)
+
+    if train_ratio is not None:
+        coco_val.write(val_path)
+
+
