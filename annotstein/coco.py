@@ -4,43 +4,57 @@ import typing as t
 import itertools
 from datetime import datetime
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, Extra
 import random
 
 
 class COCOImage(BaseModel):
     id: int
     file_name: str
-    height: t.Optional[int]
-    width: t.Optional[int]
+    height: int
+    width: int
+    flickr_url: t.Optional[str] = None
+    coco_url: t.Optional[str] = None
+    license: t.Optional[str] = None
 
 
 class COCOAnnotation(BaseModel):
-    id: int
-    image_id: int
-    bbox: t.Tuple[float, float, float, float]
+    id: t.Optional[int] = None
+    area: t.Optional[float] = None
+    bbox: t.List[float] = Field(..., min_length=4, max_length=4)
     category_id: int
-    area: t.Optional[float]
+    image_id: int
+    iscrowd: t.Optional[int] = None
+    segmentation: t.Optional[t.List[t.List[float]]] = None
 
 
 class COCOCategory(BaseModel):
     id: int
-    supercategory: t.Optional[str]
     name: str
+    supercategory: t.Optional[str] = None
 
 
 class COCOInfo(BaseModel):
-    description: str
-    version: str
-    date_created: t.Optional[str]
-    contributor: t.Optional[str]
+    contributor: str = ""
+    date_created: str = ""
+    description: str = ""
+    url: str = ""
+    version: str = "1.0"
+    year: int = 2023
 
 
-class COCOModel(BaseModel):
-    images: t.List[COCOImage]
+class COCOLicense(BaseModel):
+    id: int
+    name: str = ""
+    url: str = ""
+
+
+class COCOModel(BaseModel, extra=Extra.allow):
     annotations: t.List[COCOAnnotation]
     categories: t.List[COCOCategory]
-    info: COCOInfo
+    licenses: t.Optional[t.List[COCOLicense]] = None
+    images: t.List[COCOImage]
+    info: t.Optional[COCOInfo] = None
 
 
 class COCO:
@@ -50,7 +64,6 @@ class COCO:
         self.annotations = index.annotations
         self.categories = index.categories
         self.images_index: t.Dict[int, COCOImage]
-        self.annotation_index: t.Dict[int, COCOAnnotation]
 
         self.create_indices()
 
@@ -59,9 +72,6 @@ class COCO:
         self.categories_to_annotations = {}
         self.category_keys_to_id = {}
         self.images_index = {image.id: image for image in self.images}
-        self.annotation_index = {
-            annotation.id: annotation for annotation in self.annotations
-        }
         self.category_index = {category.id: category for category in self.categories}
 
         for annotation in self.annotations:
@@ -142,7 +152,7 @@ class COCO:
 
         now = datetime.now()
 
-        contributors = ", ".join([i.info.contributor for i in indices if i.info.contributor is not None])
+        contributors = ", ".join([i.info.contributor for i in indices if i.info is not None])
         new_index = {
             "info": {
                 "description": "",
@@ -168,20 +178,25 @@ class COCO:
 
         return index_dict
 
-    def rebase_filenames(self, prefix: str) -> "COCO":
+    def rebase_filenames(self, prefix: t.Union[str, pathlib.Path]) -> "COCO":
 
         prefix_p = pathlib.Path(prefix)
         for image in self.images:
-            image.file_name = str(prefix_p / pathlib.Path(image.file_name).name)
+            image.file_name = (prefix_p / pathlib.Path(image.file_name).name).as_posix()
 
         return self
 
     def to_dict(self):
+        d = {}
+        if self.info is not None:
+            d["info"] = self.info.model_dump(exclude_unset=True)
+        # if self.licenses is not None:
+        #    d["licenses"] = self.licenses.model_dump(exclude_unset=True)
         return {
-            "info": self.info.dict(exclude_unset=True),
-            "images": [i.dict(exclude_unset=True) for i in self.images],
-            "annotations": [a.dict(exclude_unset=True) for a in self.annotations],
-            "categories": [c.dict(exclude_unset=True) for c in self.categories],
+            "images": [i.model_dump(exclude_unset=True) for i in self.images],
+            "annotations": [a.model_dump(exclude_unset=True) for a in self.annotations],
+            "categories": [c.model_dump(exclude_unset=True) for c in self.categories],
+            **d,
         }
 
     def to_classtree(self, root_dir: pathlib.Path, output_dir: pathlib.Path):
@@ -219,42 +234,31 @@ class COCO:
             )
             crop.save(dest_path)
 
-    def to_relative_coordinates(self, root_dir: t.Optional[pathlib.Path] = None) -> "COCO":
-        if root_dir is None:
-            # Ensure image entries include width and height
-            pass
-
+    def to_relative_coordinates(self) -> "COCO":
         for annotation in self.annotations:
             bbox = annotation.bbox
             image = self.images_index[annotation.image_id]
-            img = Image.open(root_dir / image.file_name)
-            width, height = img.size
-            rel_bbox = (
-                bbox[0] / width,
-                bbox[1] / height,
-                bbox[2] / width,
-                bbox[3] / height,
-            )
+
+            rel_bbox = [
+                bbox[0] / image.width,
+                bbox[1] / image.height,
+                bbox[2] / image.width,
+                bbox[3] / image.height,
+            ]
             annotation.bbox = rel_bbox
 
         return self
 
-    def to_absolute_coordinates(self, root_dir: t.Optional[pathlib.Path] = None) -> "COCO":
-        if root_dir is None:
-            # Ensure image entries include width and height
-            pass
-
+    def to_absolute_coordinates(self) -> "COCO":
         for annotation in self.annotations:
             bbox = annotation.bbox
             image = self.images_index[annotation.image_id]
-            img = Image.open(root_dir / image.file_name)
-            width, height = img.size
-            abs_bbox = (
-                bbox[0] * width,
-                bbox[1] * height,
-                bbox[2] * width,
-                bbox[3] * height,
-            )
+            abs_bbox = [
+                bbox[0] * image.width,
+                bbox[1] * image.height,
+                bbox[2] * image.width,
+                bbox[3] * image.height,
+            ]
             annotation.bbox = abs_bbox
 
         return self
@@ -293,4 +297,3 @@ class COCO:
         )
 
         return train_index, test_index
-
