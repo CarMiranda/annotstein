@@ -297,3 +297,35 @@ class COCO:
         )
 
         return train_index, test_index
+
+    @staticmethod
+    def get_images_from_folder(path: pathlib.Path, recursive: bool = True):
+        if not path.is_dir():
+            raise ValueError("`path` should be a directory containing images.")
+
+        if recursive:
+            images_list = list(path.glob("**/*"))
+        else:
+            images_list = list(path.glob("*"))
+
+        available_images = [f for f in images_list if f.suffix in [".jpg", ".png", ".jpeg", ".tiff"]]
+        if len(available_images) == 0:
+            raise ValueError(f"Given path ({path}) does not contain images.")
+
+        coco_images: t.List[COCOImage] = []
+        current_id = 0
+        for image_path in available_images:
+            try:
+                img = Image.open(image_path)
+                width, height = img.size
+                coco_images.append(COCOImage(
+                    id=current_id,
+                    file_name=image_path.as_posix(),
+                    height=height,
+                    width=width,
+                ))
+                current_id += 1
+            except Exception as e:
+                print(f"Could not read image at {image_path}. {e}")
+
+        return coco_images
