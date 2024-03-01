@@ -90,7 +90,7 @@ class VOC:
                 "url": "",
                 "version": "1.0.0",
                 "year": now.year,
-                "contributor": "Buawei",
+                "contributor": "",
                 "date_created": str(now),
             },
             "images": list(images.values()),

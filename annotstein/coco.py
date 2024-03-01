@@ -4,28 +4,29 @@ import typing as t
 import itertools
 from datetime import datetime
 from PIL import Image
-from pydantic import BaseModel, Field, Extra
+from pydantic import BaseModel, Field, Extra, validator
 import random
 
 
 class COCOImage(BaseModel):
     id: int
     file_name: str
-    height: int
-    width: int
+    height: t.Optional[int] = None
+    width: t.Optional[int] = None
     flickr_url: t.Optional[str] = None
     coco_url: t.Optional[str] = None
-    license: t.Optional[str] = None
+    license: t.Optional[int] = None
 
 
 class COCOAnnotation(BaseModel):
     id: t.Optional[int] = None
     area: t.Optional[float] = None
-    bbox: t.List[float] = Field(..., min_length=4, max_length=4)
+    bbox: t.List[float] 
     category_id: int
     image_id: int
     iscrowd: t.Optional[int] = None
     segmentation: t.Optional[t.List[t.List[float]]] = None
+    attributes: t.Dict[str, str] = dict()
 
 
 class COCOCategory(BaseModel):
@@ -210,7 +211,11 @@ class COCO:
             image = self.images_index[annotation.image_id]
             category = self.category_index[annotation.category_id]
 
-            img = Image.open(root_dir / image.file_name)
+            try:
+                img = Image.open(root_dir / image.file_name)
+            except Exception as e:
+                print(e)
+                continue
 
             if all(0 <= b <= 1 for b in bbox):
                 width, height = img.size
