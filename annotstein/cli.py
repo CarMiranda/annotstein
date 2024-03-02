@@ -4,8 +4,8 @@ import typing as t
 import typer
 from collections import Counter
 
-from annotstein.coco import COCO
-from annotstein.voc import VOC
+from annotstein.coco.ops import COCO
+from annotstein.voc.ops import VOC
 
 
 class CoordinateKind(str, enum.Enum):
@@ -30,8 +30,8 @@ def convert(
     target: t.Annotated[Formats, typer.Option(help="Output path format.")],
 ):
     if source == Formats.voc and target == Formats.coco:
-        voc = VOC.parse_xml(input_path)
-        COCO.from_dict(voc).write(output_path)
+        ds = VOC.parse_xml(input_path)
+        COCO.from_dict(ds).write(output_path)
     else:
         raise NotImplementedError()
 
@@ -43,7 +43,7 @@ def coordinates(
     output_path: t.Annotated[pathlib.Path, typer.Option(help="Target files to write into.")],
     to: t.Annotated[CoordinateKind, typer.Option(help="Coordinate system to transform into.")],
 ):
-    index = COCO.from_file(input_path)
+    index = COCO.read_from(input_path)
     if to == CoordinateKind.relative:
         index.to_relative_coordinates().write(output_path)
     elif to == CoordinateKind.absolute:
@@ -54,27 +54,27 @@ def coordinates(
 def crop(
     *,
     input_path: t.Annotated[pathlib.Path, typer.Option(help="Source file to read from.")],
-    images_dir: t.Annotated[pathlib.Path, typer.Option(
-        help="Directory containing images referenced in the annotations. Image dimensions will be read to transform coordinates.",
-    )],
-    output_path: t.Annotated[pathlib.Path, typer.Option(
-        help="Target directory to write into."
-    )],
+    images_dir: t.Annotated[
+        pathlib.Path,
+        typer.Option(
+            help="""Directory containing images referenced in the annotations. \
+                    Image dimensions will be read to transform coordinates.""",
+        ),
+    ],
+    output_path: t.Annotated[pathlib.Path, typer.Option(help="Target directory to write into.")],
 ):
-    COCO.from_file(input_path).to_classtree(images_dir, output_path)
+    COCO.read_from(input_path).to_classtree(output_path, images_dir)
 
 
 @app.command(help="Merge multiple COCO annotations into a single one.")
 def merge(
     *,
-    input_paths: t.Annotated[t.List[pathlib.Path], typer.Option(
-        help="Source files to read from."
-    )],
+    input_paths: t.Annotated[t.List[pathlib.Path], typer.Option(help="Source files to read from.")],
     output_file: t.Annotated[pathlib.Path, typer.Option(help="Target file to write into.")],
 ):
     indices = []
     for input_path in input_paths:
-        indices.append(COCO.from_file(input_path))
+        indices.append(COCO.read_from(input_path))
     COCO.merge(*indices).write(output_file)
 
 
@@ -82,24 +82,24 @@ def merge(
 def rebase(
     *,
     input_path: t.Annotated[pathlib.Path, typer.Option(help="Source file to read from.")],
-    prefix: t.Annotated[pathlib.Path, typer.Option(
-        help="Prefix to use for each image entry."
-    )],
+    prefix: t.Annotated[pathlib.Path, typer.Option(help="Prefix to use for each image entry.")],
     output_path: t.Annotated[pathlib.Path, typer.Option(help="Target file to write to.")],
 ):
-    COCO.from_file(input_path).rebase_filenames(prefix).write(output_path)
+    COCO.read_from(input_path).rebase_filenames(prefix).write(output_path)
+
 
 @app.command(help="Print statistics about the given annotation file.")
 def stats(
     *,
     input_path: t.Annotated[pathlib.Path, typer.Option(help="Source file to read from.")],
 ):
-    coco = COCO.from_file(input_path)
+    coco = COCO.read_from(input_path)
     category_counts = Counter([coco.category_index[c.category_id].name for c in coco.annotations])
 
     print("Category counts:")
     for name, count in category_counts.items():
         print(f"- {name}: {count}")
+
 
 @app.command(help="Split a given dataset index into train and test indices.")
 def split(
@@ -107,17 +107,24 @@ def split(
     input_path: t.Annotated[pathlib.Path, typer.Option(help="Source file to read from.")],
     output_path: t.Annotated[pathlib.Path, typer.Option(help="Target file to write to.")],
     test_ratio: t.Annotated[float, typer.Option(help="Ratio (between 0 and 1) for the test split.")],
-    train_ratio: t.Annotated[t.Optional[float], typer.Option(help="""Ratio (between 0 and 1) for the train split. \
-                                                  Use it with test_ratio in order to also get a validation split.""")] = None
+    train_ratio: t.Annotated[
+        t.Optional[float],
+        typer.Option(
+            help="""Ratio (between 0 and 1) for the train split. \
+                                                  Use it with test_ratio in order to also get a validation split."""
+        ),
+    ] = None,
+    shuffle: t.Annotated[bool, typer.Option(help="Whether to shuffle the dataset prior to splitting.")] = True,
+    stratify: t.Annotated[bool, typer.Option(help="Whether to stratify the split based on categories.")] = True,
+    keep_empty: t.Annotated[bool, typer.Option(help="Whether to keep images without annotations.")] = True,
 ):
-    coco = COCO.from_file(input_path)
+    coco = COCO.read_from(input_path)
     if train_ratio is None:
-        coco_train, coco_test = coco.split(test_ratio)
+        coco_train, coco_test = coco.train_test_split(test_ratio, shuffle, stratify, keep_empty)
         coco_val = None
     else:
-        coco_train, coco_val = coco.split(test_ratio=(1 - train_ratio))
-        coco_val, coco_test = coco_val.split(test_ratio=test_ratio / (1 - train_ratio))
-
+        coco_train, coco_val = coco.train_test_split((1 - train_ratio), shuffle, stratify, keep_empty)
+        coco_val, coco_test = coco_val.train_test_split(test_ratio / (1 - train_ratio), shuffle, stratify, keep_empty)
 
     if output_path.is_dir():
         train_path = output_path / (input_path.stem + "_train.json")

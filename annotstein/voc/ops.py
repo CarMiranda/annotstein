@@ -47,13 +47,10 @@ class VOC:
                 annotations[qualified_name] = []
 
             for member in root.findall("object"):
-
                 klass = member.findtext("name")
                 bndbox = member.find("bndbox")
                 if bndbox is None or klass is None:
-                    print(
-                        f"{xml_file} has annotations without bounding boxes or classes."
-                    )
+                    print(f"{xml_file} has annotations without bounding boxes or classes.")
                     continue
 
                 coords = [bndbox.findtext(c) for c in ["xmin", "ymin", "xmax", "ymax"]]
