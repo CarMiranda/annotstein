@@ -4,8 +4,9 @@ from io import TextIOWrapper
 from itertools import chain
 import pathlib
 import typing as t
-from typing_extensions import Annotated
+from typing_extensions import Annotated, Self
 from pydantic import AnyHttpUrl, BaseModel, Field
+import yaml
 
 from PIL import Image
 from annotstein.coco import ops as coco
@@ -19,7 +20,15 @@ class Annotation(BaseModel):
 
     @classmethod
     @abstractmethod
-    def parse_row(cls, *row) -> t.Self:
+    def parse_row(cls, *row) -> Self:
+        pass
+
+    @abstractmethod
+    def dumps_row(self, delimiter: str = " ") -> str:
+        pass
+
+    @abstractmethod
+    def dump_row(self) -> t.List[t.Any]:
         pass
 
     @classmethod
@@ -27,7 +36,11 @@ class Annotation(BaseModel):
     def from_coco(
         cls,
         coco_annotation: coco.Annotation,
-    ) -> t.Self:
+    ) -> Self:
+        pass
+
+    @abstractmethod
+    def to_coco(self) -> t.Tuple[t.List[float], t.List[t.List[float]]]:
         pass
 
 
@@ -44,16 +57,18 @@ class AnnotationGroup(BaseModel, t.Generic[TAnnotation]):
     # Collection of annotations
     annotations: t.Sequence[TAnnotation]
 
-    @abstractmethod
     def dump(self, fp: TextIOWrapper):
-        pass
+        writer = csv.writer(fp, delimiter=" ")
+        for annotation in self.annotations:
+            writer.writerow(annotation.dump_row())
 
-    @abstractmethod
-    def dumps(self, delimiter: str = " ") -> str:
-        pass
+    def dumps(self):
+        res = ""
+        for annotation in self.annotations:
+            res += annotation.dumps_row()
 
     @classmethod
-    def parse_annotation_file(cls, path: pathlib.Path, delimiter: str = " ") -> t.Self:
+    def parse_annotation_file(cls, path: pathlib.Path, delimiter: str = " ") -> t.Sequence[TAnnotation]:
         annotations = []
         with open(path) as fp:
             reader = csv.reader(fp, delimiter=delimiter)
@@ -63,7 +78,7 @@ class AnnotationGroup(BaseModel, t.Generic[TAnnotation]):
                 except Exception:
                     pass
 
-        return cls(file_name=str(path.resolve()), annotations=annotations)
+        return annotations
 
     @classmethod
     def from_coco(
@@ -81,8 +96,11 @@ class Dataset(BaseModel, t.Generic[TAnnotation]):
     # Collection of annotation groups
     annotations: t.Sequence[AnnotationGroup[TAnnotation]]
 
+    # Category names
+    names: t.Optional[t.Dict[int, str]] = None
+
     @classmethod
-    def from_coco(cls, coco_dataset: coco.Dataset) -> t.Self:
+    def from_coco(cls, coco_dataset: coco.Dataset) -> Self:
         images_index = {i.id: i for i in coco_dataset.images}
         grouped_by_image: t.Dict[str, t.List[coco.Annotation]] = {i.file_name: [] for i in coco_dataset.images}
         for annotation in coco_dataset.annotations:
@@ -93,27 +111,86 @@ class Dataset(BaseModel, t.Generic[TAnnotation]):
         for file_name, annotation_group in grouped_by_image.items():
             yolo_annotations.append(cls.annotation_type.from_coco(file_name, annotation_group))
 
-        return cls(annotations=yolo_annotations)
+        names = {c.id: c.name for c in coco_dataset.categories}
+
+        return cls(annotations=yolo_annotations, names=names)
+
+    def to_coco(self):
+        images: t.List[coco.Image] = []
+        annotations: t.List[coco.Annotation] = []
+        found_categories = set()
+
+        for i, annotation_group in enumerate(self.annotations):
+            images.append(
+                coco.Image(
+                    id=i,
+                    file_name=annotation_group.file_name,
+                    height=None,
+                    width=None,
+                )
+            )
+
+            for j, annotation in enumerate(annotation_group.annotations):
+                bbox, segmentation = annotation.to_coco()
+                annotations.append(
+                    coco.Annotation(
+                        id=j,
+                        image_id=i,
+                        category_id=annotation.category_id,
+                        bbox=bbox,
+                        segmentation=segmentation,
+                    )
+                )
+                found_categories.add(annotation.category_id)
+
+        if self.names is not None:
+            categories = [coco.Category(id=i, name=name, supercategory=name) for i, name in self.names.items()]
+        else:
+            categories = [coco.Category(id=i, name=str(i), supercategory=str(i)) for i in found_categories]
+
+        return coco.Dataset(categories=categories, images=images, annotations=annotations)
 
     @classmethod
     def parse_directory(cls, path: pathlib.Path):
-        annotations = []
-        for file in path.glob("*.txt"):
+        images_path = path / "images"
+        labels_path = path / "labels"
+        if not (images_path.exists() and labels_path.exists()):
+            images_path = labels_path = path
+
+        images: t.Dict[str, pathlib.Path] = dict()
+        annotations: t.Sequence[AnnotationGroup[TAnnotation]] = []
+
+        images_lst = list(chain(*[images_path.glob(f"*{s}") for s in IMAGE_SUFFIXES]))
+        images = {p.stem: p for p in images_lst}
+
+        for file in labels_path.glob("*.txt"):
             try:
                 image_annotations = cls.annotation_type.parse_annotation_file(file)
-            except Exception:
+            except Exception as e:
+                print(e)
                 continue
 
-            annotations.extend(image_annotations)
+            image_name = images.pop(file.stem)
+            annotation_group = AnnotationGroup(file_name=str(image_name.resolve()), annotations=image_annotations)
+            annotations.append(annotation_group)
 
-        return cls(annotations=annotations)
+        # Images without annotations
+        for i in images.values():
+            annotations.append(AnnotationGroup(file_name=str(i.resolve()), annotations=[]))
+
+        return annotations
 
     @classmethod
     def parse_to_coco(cls, path: pathlib.Path):
+        images_path = path / "images"
+        labels_path = path / "labels"
+        if not (images_path.exists() and labels_path.exists()):
+            images_path = labels_path = path
+
         images: t.List[coco.Image] = []
         image_index: t.Dict[str, coco.Image] = dict()
         annotations: t.List[coco.Annotation] = []
-        for file in chain(*[path.glob(f"*{s}") for s in IMAGE_SUFFIXES]):
+        for file in chain(*[images_path.glob(f"*{s}") for s in IMAGE_SUFFIXES]):
             image = None
             try:
                 width, height = Image.open(file).size
@@ -130,7 +207,7 @@ class Dataset(BaseModel, t.Generic[TAnnotation]):
             images.append(image)
             image_index[file.stem] = image
 
-        for file in path.glob("*.txt"):
+        for file in labels_path.glob("*.txt"):
             if file.stem not in image_index:
                 continue
 
@@ -140,10 +217,12 @@ class Dataset(BaseModel, t.Generic[TAnnotation]):
             except Exception:
                 continue
 
+            annotation_group = AnnotationGroup(file_name=image.file_name, annotations=yolo_annotations)
+
             coco_annotations = []
             try:
-                for annotation in yolo_annotations.annotations:
-                    bbox = xcycwh_to_xywh(annotation.bbox)
+                for annotation in annotation_group.annotations:
+                    bbox, segmentation = annotation.to_coco()
                     coco_annotations.append(
                         coco.Annotation(
                             id=len(annotations),
@@ -151,8 +230,8 @@ class Dataset(BaseModel, t.Generic[TAnnotation]):
                             category_id=annotation.category_id,
                             area=bbox[2] * bbox[3],
                             iscrowd=0,
-                            bbox=list(bbox),
-                            segmentation=[],
+                            bbox=bbox,
+                            segmentation=segmentation,
                             attributes=dict(),
                         )
                     )
@@ -174,7 +253,7 @@ class Dataset(BaseModel, t.Generic[TAnnotation]):
 class TrainTask(BaseModel):
     dataset_type: t.ClassVar[t.Type[Dataset]]
 
-    root_path: pathlib.Path
+    path: pathlib.Path
     train: SplitSet
     val: SplitSet
     test: t.Optional[SplitSet] = None
@@ -183,38 +262,52 @@ class TrainTask(BaseModel):
 
     download: t.Optional[AnyHttpUrl] = None
 
+    @classmethod
+    def parse_yaml(cls, path: pathlib.Path) -> Self:
+        with open(path) as fp:
+            d = yaml.safe_load(fp)
+        return cls.model_validate(d)
+
     def load(self) -> "SplitsDataset":
         train_annotations: t.Sequence[AnnotationGroup]
-        if isinstance(self.train, list):
-            train_annotations = list(chain(*[TrainTask.dataset_type.parse_directory(td).annotations for td in self.train]))
-        elif isinstance(self.train, pathlib.Path):
-            train_annotations = TrainTask.dataset_type.parse_directory(self.train).annotations
-        else:
-            raise ValueError(f"Found type {type(self.train)} for train annotations, expected path or list of paths.")
-
         val_annotations: t.Sequence[AnnotationGroup]
-        if isinstance(self.val, list):
-            val_annotations = list(chain(*[TrainTask.dataset_type.parse_directory(td).annotations for td in self.val]))
-        elif isinstance(self.val, pathlib.Path):
-            val_annotations = TrainTask.dataset_type.parse_directory(self.val).annotations
-        else:
-            raise ValueError(f"Found type {type(self.val)} for val annotations, expected path or list of paths.")
+        test_annotations: t.Optional[t.Sequence[AnnotationGroup]] = None
 
-        test_annotations: t.Optional[t.Sequence[AnnotationGroup]]
-        if self.test is None:
-            test_annotations = None
-        elif isinstance(self.test, list):
-            test_annotations = list(chain(*[TrainTask.dataset_type.parse_directory(td).annotations for td in self.test]))
-        elif isinstance(self.test, pathlib.Path):
-            test_annotations = TrainTask.dataset_type.parse_directory(self.test).annotations
-        else:
-            raise ValueError(f"Found type {type(self.test)} for test annotations, expected path or list of paths.")
+        train_paths = self.train if isinstance(self.train, list) else [self.train]
+        train_annotations = list(chain(*[TrainTask.dataset_type.parse_directory(td) for td in train_paths]))
+
+        val_paths = self.val if isinstance(self.val, list) else [self.val]
+        val_annotations = list(chain(*[TrainTask.dataset_type.parse_directory(td) for td in val_paths]))
+
+        if self.test is not None:
+            test_paths = self.test if isinstance(self.test, list) else [self.test]
+            test_annotations = list(chain(*[TrainTask.dataset_type.parse_directory(td) for td in test_paths]))
 
         return SplitsDataset(
             train_annotations=TrainTask.dataset_type(annotations=train_annotations),
             val_annotations=TrainTask.dataset_type(annotations=val_annotations),
             test_annotations=TrainTask.dataset_type(annotations=test_annotations) if test_annotations is not None else None,
         )
+
+    def to_coco(self) -> t.Tuple[coco.Dataset, coco.Dataset, t.Optional[coco.Dataset]]:
+        train_paths = self.train if isinstance(self.train, list) else [self.train]
+        train_ags = [self.dataset_type.parse_directory(self.path / pt) for pt in train_paths]
+        train_dss = [Dataset(annotations=ags, names=self.names).to_coco() for ags in train_ags]
+        train_ds = coco.merge_datasets(*train_dss)
+
+        val_paths = self.val if isinstance(self.val, list) else [self.val]
+        val_ags = [self.dataset_type.parse_directory(self.path / pt) for pt in val_paths]
+        val_dss = [Dataset(annotations=ags, names=self.names).to_coco() for ags in val_ags]
+        val_ds = coco.merge_datasets(*val_dss)
+
+        test_ds = None
+        if self.test is not None:
+            test_paths = self.test if isinstance(self.test, list) else [self.test]
+            test_ags = [self.dataset_type.parse_directory(self.path / pt) for pt in test_paths]
+            test_dss = [Dataset(annotations=ags, names=self.names).to_coco() for ags in test_ags]
+            test_ds = coco.merge_datasets(*test_dss)
+
+        return train_ds, val_ds, test_ds
 
 
 class SplitsDataset(BaseModel, t.Generic[TAnnotation]):
@@ -247,19 +340,29 @@ def xywh_to_xcycwh(bbox: t.Tuple[float, float, float, float]) -> t.Tuple[float, 
     return bbox[0] + bbox[2] * 0.5, bbox[1] + bbox[3] * 0.5, bbox[2], bbox[3]
 
 
-class BBoxAnnotation(Annotation):
+class DetectionAnnotation(Annotation):
     bbox: Annotated[t.Sequence[float], Field(min_length=4, max_length=4)]
 
     @classmethod
-    def parse_row(cls, *row) -> "BBoxAnnotation":
+    def parse_row(cls, *row) -> "DetectionAnnotation":
         return cls(category_id=int(row[0]), bbox=list(map(float, row[1:])))
+
+    def dump_row(self) -> t.List[t.Any]:
+        return [self.category_id, *self.bbox]
+
+    def dumps_row(self, delimiter: str = " ") -> str:
+        return delimiter.join(map(str, [self.category_id, *self.bbox]))
 
     @classmethod
     def from_coco(
         cls,
         coco_annotation: coco.Annotation,
-    ) -> t.Self:
+    ) -> Self:
         return cls(category_id=coco_annotation.category_id, bbox=xywh_to_xcycwh(coco_annotation.bbox))
+
+    def to_coco(self):
+        x, y, w, h = xcycwh_to_xywh(self.bbox)
+        return [x, y, w, h], [[x, y, x + w, y, x + w, y + h, x, y + h]]
 
 
 class SegmentationAnnotation(Annotation):
@@ -269,20 +372,49 @@ class SegmentationAnnotation(Annotation):
     def parse_row(cls, *row) -> "SegmentationAnnotation":
         return cls(category_id=int(row[0]), segmentation=list(map(float, row[1:])))
 
+    def dump_row(self) -> t.List[t.Any]:
+        return [self.category_id, *self.segmentation]
+
+    def dumps_row(self, delimiter: str = " ") -> str:
+        return delimiter.join(map(str, [self.category_id, *self.segmentation]))
+
     @classmethod
     def from_coco(
         cls,
         coco_annotation: coco.Annotation,
-    ) -> t.Self:
+    ) -> Self:
         return cls(
             category_id=coco_annotation.category_id,
             segmentation=coco_annotation.segmentation[0] if coco_annotation.segmentation is not None else [],
         )
 
+    def to_coco(self):
+        xmin = min(self.segmentation[::2])
+        ymin = min(self.segmentation[1::2])
+        xmax = max(self.segmentation[::2])
+        ymax = max(self.segmentation[1::2])
+        return [xmin, ymin, xmax - xmin, ymax - ymin], [list(self.segmentation)]
 
-class BBoxAnnotationGroup(AnnotationGroup[BBoxAnnotation]):
-    annotation_type = BBoxAnnotation
+
+class DetectionAnnotationGroup(AnnotationGroup[DetectionAnnotation]):
+    annotation_type = DetectionAnnotation
 
 
 class SegmentationAnnotationGroup(AnnotationGroup[SegmentationAnnotation]):
     annotation_type = SegmentationAnnotation
+
+
+class DetectionDataset(Dataset[DetectionAnnotation]):
+    annotation_type = DetectionAnnotationGroup
+
+
+class SegmentationDataset(Dataset[SegmentationAnnotation]):
+    annotation_type = DetectionAnnotationGroup
+
+
+class DetectionTask(TrainTask):
+    dataset_type = DetectionDataset
+
+
+class SegmentationTask(TrainTask):
+    dataset_type = SegmentationDataset
