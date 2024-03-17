@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "annotstein"
 version = "0.1.1"
-description = ""
+description = "Annotation tools for computer vision."
 authors = ["Carlos Miranda <carlos.miralop@proton.me>"]
 license = "MIT"
 readme = "README.md"
