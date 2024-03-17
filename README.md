@@ -25,23 +25,23 @@ convert -s voc -t coco -i voc/ -o coco.json
 convert -s coco -t voc -i coco.json -o voc/
 
 # Convert YOLO-segment (https://docs.ultralytics.com/datasets/segment/) to COCO
-convert -s yolo-segment -t coco -i dataset.yaml -o coco.json
+convert -s yolo-segment-task -t coco -i dataset.yaml -o coco.json
 
 # Convert COCO to YOLO-segment
-convert -s coco -t yolo-segment -i coco.json -t dataset.yaml
+convert -s coco -t yolo-segment-task -i coco.json -t dataset.yaml
 
-# Convert YOLO-detect () to COCO
-convert -s yolo-detect -t coco -i dataset.yaml -o coco.json
+# Convert YOLO-detect (https://docs.ultralytics.com/datasets/detect/) to COCO
+convert -s yolo-detect-task -t coco -i dataset.yaml -o coco.json
 
 # Convert COCO to YOLO-detect
-convert -s coco -t yolo-detect -i coco.json -o dataset.yaml
+convert -s coco -t yolo-detect-task -i coco.json -o dataset.yaml
 ```
 
 Since VOC and YOLO require annotations to exist as individual text files along with the images they describe, the flags `--symlink|--copy|--move` in the `convert` command allow to select how images will be processed.
 
 ### COCO operations
 
-The following operations can be performed on COCO datasets:
+The following operations can be performed on COCO datasets, using the `coco` subcommand:
 - Transform coordinates from absolute to relative, and vice verse (`coordinates`)
 - Merge multiple COCO datasets into a single one (`merge`)
 - Extract image patches into a `category_id`-based file tree (`crop`)
