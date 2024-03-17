@@ -1,39 +1,18 @@
 import enum
-import pathlib
-import typing as t
 import typer
+import typing as t
+import pathlib
 from collections import Counter
 
 from annotstein.coco.ops import COCO
-from annotstein.voc.ops import VOC
-
-
-class CoordinateKind(str, enum.Enum):
-    relative = "rel"
-    absolute = "abs"
-
-
-class Formats(str, enum.Enum):
-    coco = "coco"
-    voc = "voc"
 
 
 app = typer.Typer()
 
 
-@app.command(help="Convert from one annotation format into another.")
-def convert(
-    *,
-    input_path: t.Annotated[pathlib.Path, typer.Option(help="Source path to read from.")],
-    output_path: t.Annotated[pathlib.Path, typer.Option(help="Target path to write into.")],
-    source: t.Annotated[Formats, typer.Option(help="Input path format.")],
-    target: t.Annotated[Formats, typer.Option(help="Output path format.")],
-):
-    if source == Formats.voc and target == Formats.coco:
-        ds = VOC.parse_xml(input_path)
-        COCO.from_dict(ds).write(output_path)
-    else:
-        raise NotImplementedError()
+class CoordinateKind(str, enum.Enum):
+    relative = "rel"
+    absolute = "abs"
 
 
 @app.command(help="Transform coordinates from absolute to relative, or vice versa.")
@@ -88,19 +67,6 @@ def rebase(
     COCO.read_from(input_path).rebase_filenames(prefix).write(output_path)
 
 
-@app.command(help="Print statistics about the given annotation file.")
-def stats(
-    *,
-    input_path: t.Annotated[pathlib.Path, typer.Option(help="Source file to read from.")],
-):
-    coco = COCO.read_from(input_path)
-    category_counts = Counter([coco.category_index[c.category_id].name for c in coco.annotations])
-
-    print("Category counts:")
-    for name, count in category_counts.items():
-        print(f"- {name}: {count}")
-
-
 @app.command(help="Split a given dataset index into train and test indices.")
 def split(
     *,
@@ -140,3 +106,16 @@ def split(
 
     if coco_val is not None:
         coco_val.write(val_path)
+
+
+@app.command(help="Print statistics about the given annotation file.")
+def stats(
+    *,
+    input_path: t.Annotated[pathlib.Path, typer.Option(help="Source file to read from.")],
+):
+    coco = COCO.read_from(input_path)
+    category_counts = Counter([coco.category_index[c.category_id].name for c in coco.annotations])
+
+    print("Category counts:")
+    for name, count in category_counts.items():
+        print(f"- {name}: {count}")
