@@ -1,9 +1,9 @@
 from datetime import datetime as dt
-from pydantic import BaseModel, Extra, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 import typing as t
 
 try:
-    # python > 3.10
+    # python >= 3.10
     from typing import Annotated
 except ImportError:
     # python < 3.10
@@ -75,7 +75,7 @@ class License(BaseModel):
     url: str = ""
 
 
-class Dataset(BaseModel, extra=Extra.allow):
+class Dataset(BaseModel, extra="allow"):
     categories: t.List[Category]
     images: t.List[Image]
     annotations: t.List[Annotation]
