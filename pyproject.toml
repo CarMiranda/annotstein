@@ -10,15 +10,29 @@ readme = "README.md"
 python = ">=3.8"
 pillow = "^10.0.0"
 pydantic = "^2.3.0"
-ruff = "^0.3.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.2"
-coverage = "^7.3.1"
-pre-commit = "^3.4.0"
+pre-commit = {version = "^3.4.0", optional = true}
+ruff = {version = "^0.5.1", optional = true}
+
+[tool.poetry.group.test.dependencies]
+pytest = {version = "^7.4.2", optional = true}
+coverage = {version = "^7.3.1", optional = true}
 
 [tool.poetry.group.cli.dependencies]
-typer = "^0.9.0"
+typer = {version = "^0.9.0", optional = true}
+
+[tool.poetry.group.s3.dependencies]
+s3fs = {version = "^2024.6.1", optional = true}
+
+
+[tool.poetry.group.gcs.dependencies]
+gcsfs = {version = "^2024.6.1", optional = true}
+
+[tool.poetry.extras]
+cli = ["typer"]
+s3 = ["s3fs"]
+gcs = ["gcsfs"]
 
 [tool.poetry.scripts]
 annotstein = { reference = "annotstein.cli.main:app", type = "console" }
