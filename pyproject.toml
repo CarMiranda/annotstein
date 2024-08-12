@@ -76,3 +76,7 @@ target-version = "py38"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[project.urls]
+"Bug Tracker" = "https://github.com/CarMiranda/annotstein/issues"
+Repository = "https://github.com/CarMiranda/annotstein.git"
