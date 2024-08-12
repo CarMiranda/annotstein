@@ -56,6 +56,7 @@ The aim of this project is to allow simple manipulation of CV datasets through t
 You can obviously use it for whatever you want!
 
 ## Roadmap
+- Add `--target-size` option to annotstein.coco.crop entrypoint
 - Integration with CVOps tooling (e.g. [CVAT](https://www.cvat.ai/), [FiftyOne](https://docs.voxel51.com/))
 - Add missing operations for YOLO datasets
 - Add more utility functions for COCO datasets
