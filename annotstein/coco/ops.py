@@ -148,9 +148,76 @@ class COCO(t.Generic[TDataset]):
 
         return COCO(train), COCO(test)
 
-    # ------------------------------------------------------------------
-    # Analysis
-    # ------------------------------------------------------------------
+    def train_val_test_split(
+        self,
+        val_ratio: float,
+        test_ratio: float,
+        shuffle: bool = True,
+        stratify: bool = True,
+        keep_empty_images: bool = True,
+    ) -> t.Tuple["COCO", "COCO", "COCO"]:
+        """Split the dataset into train, validation, and test subsets.
+
+        Args:
+            val_ratio: Fraction of the total dataset to use for validation (0–1).
+            test_ratio: Fraction of the total dataset to use for testing (0–1).
+                ``val_ratio + test_ratio`` must be < 1; the remainder becomes the
+                training set.
+            shuffle: Shuffle images before partitioning.
+            stratify: If ``True``, preserve per-category proportions across splits.
+            keep_empty_images: Include images without annotations, distributed
+                proportionally across splits.
+
+        Returns:
+            A ``(train, val, test)`` tuple of :class:`COCO` instances.
+        """
+        ds = Dataset(
+            categories=self.categories,
+            images=self.images,
+            annotations=self.annotations,
+            info=self.info,
+            licenses=self.licenses,
+        )
+
+        if stratify:
+            train, val, test = stratified_split_three_way(ds, val_ratio, test_ratio, shuffle, keep_empty_images)
+        else:
+            train, val, test = split_dataset_three_way(ds, val_ratio, test_ratio, shuffle, keep_empty_images)
+
+        return COCO(train), COCO(val), COCO(test)
+
+    @classmethod
+    def from_classification_dir(
+        cls,
+        path: FilePath,
+        recursive: bool = False,
+    ) -> "COCO":
+        """Create a COCO instance from a classification directory tree.
+
+        Expected layout::
+
+            root/
+              class_a/
+                image1.jpg
+                image2.jpg
+              class_b/
+                image3.jpg
+
+        Each immediate subdirectory is treated as a category.  Every image
+        inside that subdirectory receives a full-image bounding-box annotation
+        for the corresponding category.  Images for which dimensions cannot be
+        determined are still included (with ``width=None``, ``height=None``)
+        and receive a zero bbox.
+
+        Args:
+            path: Root directory of the classification dataset.
+            recursive: If ``True``, search subdirectories of each class folder
+                for additional images.
+
+        Returns:
+            A :class:`COCO` instance.
+        """
+        return cls(from_classification_dir(path, recursive=recursive))
 
     def eda(self) -> t.Dict[str, t.Any]:
         """Return a full EDA summary report for this dataset."""
@@ -197,10 +264,6 @@ class COCO(t.Generic[TDataset]):
         from annotstein.analysis.clustering import cluster_crops as _cluster
 
         return _cluster(self.to_dataset(), images_root=images_root, n_clusters=n_clusters, method=method)
-
-    # ------------------------------------------------------------------
-    # Metrics
-    # ------------------------------------------------------------------
 
     def quality_report(self, dup_iou: float = 0.9, conflict_iou: float = 0.5) -> t.Dict[str, t.Any]:
         """Aggregate annotation quality report."""
@@ -514,6 +577,159 @@ def stratified_split(
     return train_ds, test_ds
 
 
+def split_dataset_three_way(
+    ds: TDataset,
+    val_ratio: float,
+    test_ratio: float,
+    shuffle: bool = True,
+    keep_empty_images: bool = True,
+) -> t.Tuple[TDataset, TDataset, TDataset]:
+    """Split *ds* into train / val / test subsets (no stratification).
+
+    Args:
+        ds: Source dataset.
+        val_ratio: Fraction of the dataset to use for validation (0–1).
+        test_ratio: Fraction of the dataset to use for testing (0–1).
+            ``val_ratio + test_ratio`` must be < 1.
+        shuffle: Shuffle images before splitting.
+        keep_empty_images: Distribute images without annotations proportionally.
+
+    Returns:
+        ``(train_ds, val_ds, test_ds)``
+    """
+    if val_ratio + test_ratio >= 1.0:
+        raise ValueError(f"val_ratio + test_ratio must be < 1, got {val_ratio + test_ratio:.4f}")
+
+    images_index = {i.id: i for i in ds.images}
+    annotations_by_image, non_annotated_images = group_by_image(ds)
+    indices = list(annotations_by_image.keys())
+    if shuffle:
+        random.shuffle(indices)
+
+    n = len(indices)
+    n_val = int(val_ratio * n)
+    n_test = int(test_ratio * n)
+    n_train = n - n_val - n_test
+
+    train_idx = indices[:n_train]
+    val_idx = indices[n_train : n_train + n_val]
+    test_idx = indices[n_train + n_val :]
+
+    def _make_ds(idx: t.List[int]) -> TDataset:
+        anns = list(itertools.chain(*[annotations_by_image[i] for i in idx]))
+        imgs = [images_index[i] for i in idx]
+        return ds.__class__(categories=ds.categories, images=imgs, annotations=anns, info=ds.info, licenses=ds.licenses)
+
+    train_ds = _make_ds(train_idx)
+    val_ds = _make_ds(val_idx)
+    test_ds = _make_ds(test_idx)
+
+    if keep_empty_images:
+        empty = list(non_annotated_images)
+        if shuffle:
+            random.shuffle(empty)
+        n_e = len(empty)
+        n_e_val = int(val_ratio * n_e)
+        n_e_test = int(test_ratio * n_e)
+        n_e_train = n_e - n_e_val - n_e_test
+        for attr, e_idx in [
+            (train_ds, empty[:n_e_train]),
+            (val_ds, empty[n_e_train : n_e_train + n_e_val]),
+            (test_ds, empty[n_e_train + n_e_val :]),
+        ]:
+            attr.images.extend([images_index[i] for i in e_idx])
+
+    return train_ds, val_ds, test_ds
+
+
+def stratified_split_three_way(
+    ds: TDataset,
+    val_ratio: float,
+    test_ratio: float,
+    shuffle: bool = True,
+    keep_empty_images: bool = True,
+) -> t.Tuple[TDataset, TDataset, TDataset]:
+    """Split *ds* into train / val / test with per-category stratification.
+
+    Args:
+        ds: Source dataset.
+        val_ratio: Fraction of the dataset to use for validation (0–1).
+        test_ratio: Fraction of the dataset to use for testing (0–1).
+            ``val_ratio + test_ratio`` must be < 1.
+        shuffle: Shuffle images within each category group before splitting.
+        keep_empty_images: Distribute images without annotations proportionally.
+
+    Returns:
+        ``(train_ds, val_ds, test_ds)``
+    """
+    if val_ratio + test_ratio >= 1.0:
+        raise ValueError(f"val_ratio + test_ratio must be < 1, got {val_ratio + test_ratio:.4f}")
+
+    images_index = {i.id: i for i in ds.images}
+    groups, non_annotated_images = group_by_categories_images(ds)
+
+    # Assign each image to exactly one split (first-seen-per-category wins).
+    # This preserves category proportions while handling multi-label images.
+    image_split: t.Dict[int, str] = {}  # image_id -> "train" | "val" | "test"
+
+    for annotations_by_image in groups.values():
+        indices = [i for i in annotations_by_image.keys() if i not in image_split]
+        if shuffle:
+            random.shuffle(indices)
+
+        n = len(indices)
+        n_val = int(val_ratio * n)
+        n_test = int(test_ratio * n)
+        n_train = n - n_val - n_test
+
+        for img_id in indices[:n_train]:
+            image_split[img_id] = "train"
+        for img_id in indices[n_train : n_train + n_val]:
+            image_split[img_id] = "val"
+        for img_id in indices[n_train + n_val :]:
+            image_split[img_id] = "test"
+
+    # Build per-split image and annotation lists using all annotations per image.
+    all_annotations_by_image, _ = group_by_image(ds)
+
+    train_images: t.List[Image] = []
+    train_annotations: t.List[Annotation] = []
+    val_images: t.List[Image] = []
+    val_annotations: t.List[Annotation] = []
+    test_images: t.List[Image] = []
+    test_annotations: t.List[Annotation] = []
+
+    for img_id, split_name in image_split.items():
+        img = images_index[img_id]
+        anns = all_annotations_by_image.get(img_id, [])
+        if split_name == "train":
+            train_images.append(img)
+            train_annotations.extend(anns)
+        elif split_name == "val":
+            val_images.append(img)
+            val_annotations.extend(anns)
+        else:
+            test_images.append(img)
+            test_annotations.extend(anns)
+
+    if keep_empty_images:
+        empty = list(non_annotated_images)
+        if shuffle:
+            random.shuffle(empty)
+        n_e = len(empty)
+        n_e_val = int(val_ratio * n_e)
+        n_e_test = int(test_ratio * n_e)
+        n_e_train = n_e - n_e_val - n_e_test
+        train_images.extend([images_index[i] for i in empty[:n_e_train]])
+        val_images.extend([images_index[i] for i in empty[n_e_train : n_e_train + n_e_val]])
+        test_images.extend([images_index[i] for i in empty[n_e_train + n_e_val :]])
+
+    def _ds(imgs: t.List[Image], anns: t.List[Annotation]) -> TDataset:
+        return ds.__class__(categories=ds.categories, images=imgs, annotations=anns, info=ds.info, licenses=ds.licenses)
+
+    return _ds(train_images, train_annotations), _ds(val_images, val_annotations), _ds(test_images, test_annotations)
+
+
 def merge_datasets(*datasets: TDataset) -> TDataset:
     n_images = 0
     n_annotations = 0
@@ -567,3 +783,85 @@ def merge_datasets(*datasets: TDataset) -> TDataset:
     }
 
     return datasets[0].__class__(**merged_dataset)
+
+
+def from_classification_dir(
+    path: FilePath,
+    recursive: bool = False,
+) -> Dataset:
+    """Build a COCO :class:`Dataset` from a classification directory tree.
+
+    Expected layout::
+
+        root/
+          class_a/
+            image1.jpg
+            image2.jpg
+          class_b/
+            image3.jpg
+
+    Each immediate subdirectory name becomes a category.  Every image inside
+    receives a full-image bounding-box annotation for that category.  Images
+    whose dimensions cannot be read are still included (width/height ``None``)
+    with a zero-area bbox ``[0, 0, 0, 0]``.
+
+    Args:
+        path: Root directory of the classification dataset.
+        recursive: If ``True``, search subdirectories of each class folder for
+            additional images (useful for nested splits like ``train/class_a/``
+            under a common root).
+
+    Returns:
+        A :class:`~annotstein.coco.schemas.Dataset`.
+    """
+    root = pathlib.Path(path)
+
+    # Collect class subdirectories (sorted for deterministic IDs)
+    class_dirs = sorted([d for d in root.iterdir() if d.is_dir()])
+    if not class_dirs:
+        raise ValueError(f"No subdirectories found in {root}. Expected one subfolder per class.")
+
+    categories: t.List[Category] = []
+    images: t.List[Image] = []
+    annotations: t.List[Annotation] = []
+
+    cat_id = 0
+    image_id = 0
+    annotation_id = 0
+
+    for class_dir in class_dirs:
+        category = Category(id=cat_id, name=class_dir.name, supercategory=class_dir.name)
+        categories.append(category)
+
+        image_paths = utils.glob_images(class_dir, recursive=recursive, suffixes=IMAGE_SUFFIXES)
+
+        for img_path in sorted(image_paths):
+            width: t.Optional[int] = None
+            height: t.Optional[int] = None
+            try:
+                pil_img = PImage.open(img_path)
+                width, height = pil_img.size
+            except Exception as e:
+                print(f"Could not read image dimensions for {img_path}: {e}")
+
+            bbox = [0.0, 0.0, float(width or 0), float(height or 0)]
+            segmentation: t.List[t.List[float]] = []
+            if width and height:
+                segmentation = [[0.0, 0.0, float(width), 0.0, float(width), float(height), 0.0, float(height)]]
+
+            images.append(Image(id=image_id, file_name=img_path.as_posix(), width=width, height=height))
+            annotations.append(
+                Annotation(
+                    id=annotation_id,
+                    image_id=image_id,
+                    category_id=cat_id,
+                    bbox=bbox,
+                    segmentation=segmentation,
+                )
+            )
+            image_id += 1
+            annotation_id += 1
+
+        cat_id += 1
+
+    return Dataset(categories=categories, images=images, annotations=annotations)

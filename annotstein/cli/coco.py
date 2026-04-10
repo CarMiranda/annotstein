@@ -67,45 +67,34 @@ def rebase(
     COCO.read_from(input_path).rebase_filenames(prefix).write(output_path)
 
 
-@app.command(help="Split a given dataset index into train and test indices.")
+@app.command(help="Split a given dataset index into train, validation, and test indices.")
 def split(
     *,
     input_path: t.Annotated[pathlib.Path, typer.Option(help="Source file to read from.")],
-    output_path: t.Annotated[pathlib.Path, typer.Option(help="Target file to write to.")],
-    test_ratio: t.Annotated[float, typer.Option(help="Ratio (between 0 and 1) for the test split.")],
-    train_ratio: t.Annotated[
-        t.Optional[float],
-        typer.Option(
-            help="""Ratio (between 0 and 1) for the train split. \
-                                                  Use it with test_ratio in order to also get a validation split."""
-        ),
-    ] = None,
+    output_path: t.Annotated[pathlib.Path, typer.Option(help="Target file or directory to write to.")],
+    val_ratio: t.Annotated[float, typer.Option(help="Fraction of the dataset to use for validation (0–1).")] = 0.0,
+    test_ratio: t.Annotated[float, typer.Option(help="Fraction of the dataset to use for testing (0–1).")],
     shuffle: t.Annotated[bool, typer.Option(help="Whether to shuffle the dataset prior to splitting.")] = True,
     stratify: t.Annotated[bool, typer.Option(help="Whether to stratify the split based on categories.")] = True,
     keep_empty: t.Annotated[bool, typer.Option(help="Whether to keep images without annotations.")] = True,
 ):
     coco = COCO.read_from(input_path)
-    if train_ratio is None:
-        coco_train, coco_test = coco.train_test_split(test_ratio, shuffle, stratify, keep_empty)
-        coco_val = None
-    else:
-        coco_train, coco_val = coco.train_test_split((1 - train_ratio), shuffle, stratify, keep_empty)
-        coco_val, coco_test = coco_val.train_test_split(test_ratio / (1 - train_ratio), shuffle, stratify, keep_empty)
 
     if output_path.is_dir():
-        train_path = output_path / (input_path.stem + "_train.json")
-        val_path = output_path / (input_path.stem + "_val.json")
-        test_path = output_path / (input_path.stem + "_test.json")
+        stem = input_path.stem
+        parent = output_path
     else:
-        train_path = output_path.parent / (output_path.stem + "_train.json")
-        val_path = output_path.parent / (output_path.stem + "_val.json")
-        test_path = output_path.parent / (output_path.stem + "_test.json")
+        stem = output_path.stem
+        parent = output_path.parent
 
-    coco_train.write(train_path)
-    coco_test.write(test_path)
+    if val_ratio > 0.0:
+        coco_train, coco_val, coco_test = coco.train_val_test_split(val_ratio, test_ratio, shuffle, stratify, keep_empty)
+        coco_val.write(parent / f"{stem}_val.json")
+    else:
+        coco_train, coco_test = coco.train_test_split(1.0 - test_ratio, shuffle, stratify, keep_empty)
 
-    if coco_val is not None:
-        coco_val.write(val_path)
+    coco_train.write(parent / f"{stem}_train.json")
+    coco_test.write(parent / f"{stem}_test.json")
 
 
 @app.command(help="Print statistics about the given annotation file.")
@@ -119,3 +108,20 @@ def stats(
     print("Category counts:")
     for name, count in category_counts.items():
         print(f"- {name}: {count}")
+
+
+@app.command(name="from-dir", help="Create a COCO annotation file from a classification directory tree.")
+def from_dir(
+    *,
+    input_path: t.Annotated[
+        pathlib.Path,
+        typer.Option(help="Root directory; each immediate subdirectory is a class."),
+    ],
+    output_path: t.Annotated[pathlib.Path, typer.Option(help="Target COCO JSON file to write.")],
+    recursive: t.Annotated[
+        bool,
+        typer.Option(help="Recurse into subdirectories of each class folder."),
+    ] = False,
+):
+    COCO.from_classification_dir(input_path, recursive=recursive).write(output_path)
+    print(f"Written to {output_path}")

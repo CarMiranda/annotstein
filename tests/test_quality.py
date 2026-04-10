@@ -18,11 +18,6 @@ def _make_ds(**kwargs) -> Dataset:
     return make_coco_dataset(**kwargs)
 
 
-# ---------------------------------------------------------------------------
-# validate_bboxes
-# ---------------------------------------------------------------------------
-
-
 def test_validate_bboxes_clean(sample_dataset):
     issues = validate_bboxes(sample_dataset)
     assert issues == []
@@ -46,11 +41,6 @@ def test_validate_bboxes_out_of_bounds():
     )
     issues = validate_bboxes(ds)
     assert len(issues) == 2  # exceeds both width and height
-
-
-# ---------------------------------------------------------------------------
-# validate_segmentations
-# ---------------------------------------------------------------------------
 
 
 def test_validate_segmentations_clean(sample_dataset):
@@ -78,11 +68,6 @@ def test_validate_segmentations_odd_coords():
     assert any("odd" in i.issue for i in issues)
 
 
-# ---------------------------------------------------------------------------
-# validate_references
-# ---------------------------------------------------------------------------
-
-
 def test_validate_references_clean(sample_dataset):
     issues = validate_references(sample_dataset)
     assert issues == []
@@ -108,11 +93,6 @@ def test_validate_references_bad_category_id():
     assert any("category_id" in i.issue for i in issues)
 
 
-# ---------------------------------------------------------------------------
-# duplicate_annotations
-# ---------------------------------------------------------------------------
-
-
 def test_no_duplicates(sample_dataset):
     dups = duplicate_annotations(sample_dataset, iou_threshold=0.9)
     assert dups == []
@@ -132,11 +112,6 @@ def test_exact_duplicate_detected():
     assert dups[0].iou == pytest.approx(1.0)
 
 
-# ---------------------------------------------------------------------------
-# label_consistency
-# ---------------------------------------------------------------------------
-
-
 def test_no_label_conflicts(sample_dataset):
     conflicts = label_consistency(sample_dataset, iou_threshold=0.5)
     assert conflicts == []
@@ -153,11 +128,6 @@ def test_label_conflict_detected():
     )
     conflicts = label_consistency(ds, iou_threshold=0.5)
     assert len(conflicts) == 1
-
-
-# ---------------------------------------------------------------------------
-# quality_report
-# ---------------------------------------------------------------------------
 
 
 def test_quality_report_structure(sample_dataset):

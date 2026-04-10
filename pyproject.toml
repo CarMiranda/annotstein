@@ -18,7 +18,11 @@ repository = "https://github.com/CarMiranda/annotstein.git"
 
 [dependency-groups]
 test = ["pytest>=7.4.2,<8.0.0", "coverage>=7.3.1,<8.0.0"]
-dev = ["pre-commit>=3.4.0,<4.0.0", "ruff>=0.5.1,<1.0.0"]
+dev = [
+    "pre-commit>=3.4.0,<4.0.0",
+    "pytest>=7.4.4",
+    "ruff>=0.5.1,<1.0.0",
+]
 docs = [
   "mkdocs>=1.6.0",
   "mkdocs-material>=9.5.31",
@@ -31,6 +35,9 @@ docs = [
 
 [project.optional-dependencies]
 cli = ["typer >=0.9.0,<1.0.0"]
+viz = [
+    "plotly>=5.0",
+]
 
 [project.scripts]
 annotstein = "annotstein.cli.main:app"

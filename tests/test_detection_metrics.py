@@ -14,11 +14,6 @@ from annotstein.metrics.detection import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 def _make_gt() -> Dataset:
     categories = [Category(id=0, name="cat", supercategory="object")]
     images = [Image(id=i, file_name=f"{i}.jpg", width=640, height=480) for i in range(3)]
@@ -43,11 +38,6 @@ def _make_empty_preds(gt: Dataset) -> Dataset:
     return Dataset(categories=gt.categories, images=gt.images, annotations=[])
 
 
-# ---------------------------------------------------------------------------
-# compute_iou
-# ---------------------------------------------------------------------------
-
-
 def test_iou_identical_boxes():
     assert compute_iou([0, 0, 10, 10], [0, 0, 10, 10]) == pytest.approx(1.0)
 
@@ -63,11 +53,6 @@ def test_iou_partial_overlap():
 
 def test_iou_zero_area_box():
     assert compute_iou([0, 0, 0, 10], [0, 0, 10, 10]) == pytest.approx(0.0)
-
-
-# ---------------------------------------------------------------------------
-# compute_ap
-# ---------------------------------------------------------------------------
 
 
 def test_ap_perfect_predictions():
@@ -106,11 +91,6 @@ def test_ap_wrong_category():
     assert ap == pytest.approx(0.0)
 
 
-# ---------------------------------------------------------------------------
-# compute_ar
-# ---------------------------------------------------------------------------
-
-
 def test_ar_perfect_predictions():
     gt = _make_gt()
     preds = _make_perfect_preds(gt)
@@ -123,11 +103,6 @@ def test_ar_no_predictions():
     preds = _make_empty_preds(gt)
     ar = compute_ar(gt, preds, iou_thresholds=[0.5], max_dets=100)
     assert ar == pytest.approx(0.0)
-
-
-# ---------------------------------------------------------------------------
-# compute_coco_metrics
-# ---------------------------------------------------------------------------
 
 
 def test_coco_metrics_perfect():

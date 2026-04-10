@@ -12,11 +12,6 @@ import numpy as np
 from annotstein.coco.schemas import Annotation, Dataset
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
 def _bbox_features(annotation: Annotation) -> t.Dict[str, float]:
     x, y, w, h = annotation.bbox
     aspect_ratio = w / h if h > 0 else float("nan")
@@ -45,11 +40,6 @@ def _describe(values: t.List[float]) -> t.Dict[str, float]:
         "std": float(arr.std()),
         "median": float(np.median(arr)),
     }
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def bbox_stats(ds: Dataset) -> t.Dict[str, t.Dict[str, t.Dict[str, float]]]:

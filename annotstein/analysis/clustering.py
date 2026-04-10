@@ -36,6 +36,9 @@ class ClusterResult:
         inertia: KMeans inertia (within-cluster sum of squares).  ``None`` for
             DBSCAN.
         feature_names: Names of the features used for clustering.
+        features: Raw (unscaled) feature matrix, one row per annotation in the
+            same order as ``annotation_ids``.  Included for downstream
+            visualisation.  ``None`` when not available.
     """
 
     labels: t.List[int]
@@ -44,6 +47,7 @@ class ClusterResult:
     n_clusters: int
     inertia: t.Optional[float]
     feature_names: t.List[str]
+    features: t.Optional[t.List[t.List[float]]] = None
 
 
 def _bbox_feature_matrix(
@@ -86,6 +90,7 @@ def _build_cluster_result(
         n_clusters=len(unique_labels),
         inertia=inertia,
         feature_names=feature_names,
+        features=X_original.tolist(),
     )
 
 
@@ -169,7 +174,6 @@ def cluster_crops(
         :class:`ClusterResult`.  Annotations for which the crop could not be
         loaded receive label ``-1``.
     """
-    import cv2
     from PIL import Image as PImage
 
     images_root = pathlib.Path(images_root)
@@ -198,8 +202,7 @@ def cluster_crops(
             failed_ids.append(ann.id)
             continue
 
-        crop_np = np.array(crop, dtype=np.uint8)
-        crop_hsv = cv2.cvtColor(crop_np, cv2.COLOR_RGB2HSV)
+        crop_hsv = np.array(crop.convert("HSV"), dtype=np.uint8)
 
         hist = np.concatenate(
             [np.histogram(crop_hsv[:, :, ch].ravel(), bins=hist_bins, range=(0, 256))[0].astype(float) for ch in range(3)]
