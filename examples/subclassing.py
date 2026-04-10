@@ -8,9 +8,9 @@ class AtLeastOneAnnotation(Dataset):
         image_ids = set(i.id for i in self.images)
         annotation_image_ids = set(a.image_id for a in self.annotations)
 
-        assert image_ids.issubset(
-            annotation_image_ids
-        ), f"Some images are missing annotations: {image_ids - annotation_image_ids}"
+        assert image_ids.issubset(annotation_image_ids), (
+            f"Some images are missing annotations: {image_ids - annotation_image_ids}"
+        )
 
 
 AtLeastOneAnnotation(
