@@ -53,8 +53,6 @@ The following operations can be performed on COCO datasets, using the `coco` sub
 
 The aim of this project is to allow simple manipulation of CV datasets through the API or the CLI. Moreover, it can also be used in CI/CD or applications steps to validate that annotations are coherent (e.g. validate COCO dataset's bboxes and segmentations, validate annotations refer to existing images, etc).
 
-You can obviously use it for whatever you want!
-
 ## Roadmap
 - Integration with CVOps tooling (e.g. [CVAT](https://www.cvat.ai/), [FiftyOne](https://docs.voxel51.com/))
 - Add missing operations for YOLO datasets

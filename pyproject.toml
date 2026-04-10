@@ -1,83 +1,119 @@
-[tool.poetry]
+[project]
 name = "annotstein"
-version = "v0.1.1.post0"
 description = "Annotation tools for computer vision."
-authors = ["Carlos Miranda <carlos.miralop@proton.me>"]
-license = "MIT"
+authors = [{ name = "Carlos Miranda", email = "carlos.miralop@proton.me" }]
 readme = "README.md"
+classifiers = []
+requires-python = ">=3.10"
+dependencies = ["pillow>=10.0.0,<11.0.0", "pydantic>=2.3.0,<3.0.0"]
+dynamic = ["version"]
+
+[project.urls]
 repository = "https://github.com/CarMiranda/annotstein.git"
 
+[dependency-groups]
+test = ["pytest>=7.4.2,<8.0.0", "coverage>=7.3.1,<8.0.0"]
+dev = ["pre-commit>=3.4.0,<4.0.0", "ruff>=0.5.1,<1.0.0"]
+docs = [
+  "mkdocs>=1.6.0",
+  "mkdocs-material>=9.5.31",
+  "mkdocs-gen-files>=0.5.0",
+  "mkdocs-section-index>=0.3.9",
+  "mkdocstrings-python>=1.10.8",
+  "mkdocs-literate-nav>=0.6.1",
+  "mkdocs-render-swagger-plugin>=0.1.2",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.10"
-pillow = "^10.0.0"
-pydantic = "^2.3.0"
-typer = { version = "^0.9.0", optional = true }
+[project.optional-dependencies]
+cli = ["typer >=0.9.0,<1.0.0"]
 
-[tool.poetry.group.dev.dependencies]
-pre-commit = "^3.4.0"
-ruff = "^0.5.1"
-
-[tool.poetry.group.test.dependencies]
-pytest = "^7.4.2"
-coverage = "^7.3.1"
-
-[tool.poetry.extras]
-cli = ["typer"]
-
-[tool.poetry.scripts]
-annotstein = { reference = "annotstein.cli.main:app", type = "console" }
+[project.scripts]
+annotstein = "annotstein.cli.main:app"
 
 [tool.pytest.ini_options]
-addopts = "-ra -q"
-testpaths = [
-  "tests"
+source = ["annotstein"]
+addopts = ["-ra -q --cov=annotstein --cov-report=xml --cov-report=html"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["annotstein"]
+branch = true
+omit = [
+  "annotstein/_version.py",
+  "annotstein/__init__.py",
+  "annotstein/cli/*",
+  # Omit tests files
+  "*tests*",
+  #Omit main files
+  "*main*",
+  #Omit log and exception files
+  "*log*",
+  "*scripts*",
+  "*exception*",
+  "*_version.py*",
 ]
+
+[tool.coverage.report]
+# Regexes for lines to exclude from consideration
+exclude_also = [
+  # Have to re-enable the standard pragma
+  "pragma: no cover",
+  # Don't complain about missing debug-only code:
+  "def __repr__",
+  "if self\\.debug",
+  # Don't complain if tests don't hit defensive assertion code:
+  "raise AssertionError",
+  "raise NotImplementedError",
+  # Don't complain if non-runnable code isn't run:
+  "if 0:",
+  "if __name__ == .__main__.:",
+  # Don't complain about abstract methods, they aren't run:
+  "@(abc\\.)?abstractmethod",
+]
+ignore_errors = true
+
+[tool.coverage.html]
+directory = "coverage_html_report"
 
 [tool.ruff]
-# Enable the pycodestyle (`E`) and Pyflakes (`F`) rules by default.
-lint.select = ["E", "F"]
-lint.ignore = []
-
-# Allow autofix for all enabled rules (when `--fix`) is provided.
-lint.fixable = ["ALL"]
-lint.unfixable = []
-
-# Exclude a variety of commonly ignored directories.
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-]
-lint.per-file-ignores = {}
-
-# Same as Black.
 line-length = 130
+target-version = "py310"
+exclude = [
+  ".bzr",
+  ".direnv",
+  ".eggs",
+  ".git",
+  ".git-rewrite",
+  ".hg",
+  ".mypy_cache",
+  ".nox",
+  ".pants.d",
+  ".pytype",
+  ".ruff_cache",
+  ".svn",
+  ".tox",
+  ".venv",
+  "__pypackages__",
+  "_build",
+  "buck-out",
+  "build",
+  "dist",
+  "node_modules",
+  "venv",
+]
 
-# Allow unused variables when underscore-prefixed.
-lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-
-# Assume Python 3.8
-target-version = "py38"
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["D100", "D104", "D105", "D107"]
+pydocstyle.convention = "google"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+pattern = "v{tag}"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "annotstein/_version.py"
