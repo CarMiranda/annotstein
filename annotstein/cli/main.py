@@ -3,13 +3,15 @@ import typing as t
 import enum
 import typer
 
-from annotstein.cli import coco
+from annotstein.cli import coco, analysis, metrics
 from annotstein.coco.ops import COCO
 from annotstein.voc.ops import VOC
 from annotstein.yolo.common import DetectionTask, SegmentationTask, DetectionDataset, SegmentationDataset
 
 app = typer.Typer()
 app.add_typer(coco.app, name="coco", help="Perform operations on COCO datasets.")
+app.add_typer(analysis.app, name="analysis", help="EDA and clustering for COCO datasets.")
+app.add_typer(metrics.app, name="metrics", help="Annotation quality and detection metrics.")
 
 
 class Formats(str, enum.Enum):

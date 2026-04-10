@@ -148,6 +148,80 @@ class COCO(t.Generic[TDataset]):
 
         return COCO(train), COCO(test)
 
+    # ------------------------------------------------------------------
+    # Analysis
+    # ------------------------------------------------------------------
+
+    def eda(self) -> t.Dict[str, t.Any]:
+        """Return a full EDA summary report for this dataset."""
+        from annotstein.analysis import eda as _eda
+
+        return _eda.summary(self.to_dataset())
+
+    def bbox_aspect_ratio_buckets(self, n_buckets: int = 10, per_category: bool = True) -> t.Dict[str, t.Any]:
+        """Histogram of bbox aspect ratios."""
+        from annotstein.analysis import eda as _eda
+
+        return _eda.bbox_aspect_ratio_buckets(self.to_dataset(), n_buckets, per_category)
+
+    def spatial_distribution(self, grid_size: int = 10) -> t.Dict[str, t.Any]:
+        """2D heatmap of normalised bbox centre coordinates."""
+        from annotstein.analysis import eda as _eda
+
+        return _eda.spatial_distribution(self.to_dataset(), grid_size)
+
+    def cluster_bboxes(
+        self,
+        n_clusters: int = 8,
+        method: str = "kmeans",
+        features: t.Sequence[str] = ("width", "height", "aspect_ratio", "area"),
+    ):
+        """Cluster annotations by geometry features.
+
+        Returns a :class:`annotstein.analysis.clustering.ClusterResult`.
+        """
+        from annotstein.analysis.clustering import cluster_bboxes as _cluster
+
+        return _cluster(self.to_dataset(), n_clusters=n_clusters, method=method, features=features)
+
+    def cluster_crops(
+        self,
+        images_root: FilePath,
+        n_clusters: int = 8,
+        method: str = "kmeans",
+    ):
+        """Cluster annotations by HSV colour histogram of their image crops.
+
+        Returns a :class:`annotstein.analysis.clustering.ClusterResult`.
+        """
+        from annotstein.analysis.clustering import cluster_crops as _cluster
+
+        return _cluster(self.to_dataset(), images_root=images_root, n_clusters=n_clusters, method=method)
+
+    # ------------------------------------------------------------------
+    # Metrics
+    # ------------------------------------------------------------------
+
+    def quality_report(self, dup_iou: float = 0.9, conflict_iou: float = 0.5) -> t.Dict[str, t.Any]:
+        """Aggregate annotation quality report."""
+        from annotstein.metrics.quality import quality_report as _quality
+
+        return _quality(self.to_dataset(), dup_iou=dup_iou, conflict_iou=conflict_iou)
+
+    def coco_metrics(self, predictions: "COCO") -> t.Dict[str, t.Any]:
+        """Compute COCO detection metrics against a predictions COCO object.
+
+        Args:
+            predictions: A :class:`COCO` instance whose annotations carry a
+                ``score`` attribute.
+
+        Returns:
+            Dict with ``overall`` and ``per_category`` metric breakdowns.
+        """
+        from annotstein.metrics.detection import compute_coco_metrics
+
+        return compute_coco_metrics(self.to_dataset(), predictions.to_dataset())
+
 
 def glob_images(path: FilePath, recursive: bool = True, suffixes: t.List[str] = IMAGE_SUFFIXES):
     path = pathlib.Path(path)
