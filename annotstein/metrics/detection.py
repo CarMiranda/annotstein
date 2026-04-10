@@ -29,11 +29,6 @@ AREA_RANGES: t.Dict[str, t.Tuple[float, float]] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Core IoU utilities
-# ---------------------------------------------------------------------------
-
-
 def compute_iou(box_a: t.List[float], box_b: t.List[float]) -> float:
     """Compute IoU between two bboxes in [x, y, w, h] format."""
     ax1, ay1, aw, ah = box_a
@@ -63,11 +58,6 @@ def _iou_matrix(gt_boxes: t.List[t.List[float]], pred_boxes: t.List[t.List[float
         for j, p in enumerate(pred_boxes):
             mat[i, j] = compute_iou(g, p)
     return mat
-
-
-# ---------------------------------------------------------------------------
-# Per-image matching
-# ---------------------------------------------------------------------------
 
 
 def _match_single_image(
@@ -115,11 +105,6 @@ def _match_single_image(
             tp_flags.append(False)
 
     return scores_sorted, tp_flags, len(gt_anns)
-
-
-# ---------------------------------------------------------------------------
-# AP / AR computation
-# ---------------------------------------------------------------------------
 
 
 def _compute_ap_from_tp_fp(tp_flags: t.List[bool], n_gt: int) -> float:

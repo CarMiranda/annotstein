@@ -10,11 +10,6 @@ from dataclasses import dataclass
 from annotstein.coco.schemas import Dataset
 
 
-# ---------------------------------------------------------------------------
-# Issue types
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class BboxIssue:
     annotation_id: int
@@ -55,11 +50,6 @@ class LabelConflict:
     iou: float
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
 def _iou_xywh(a: t.List[float], b: t.List[float]) -> float:
     ax1, ay1, aw, ah = a
     ax2, ay2 = ax1 + aw, ay1 + ah
@@ -81,11 +71,6 @@ def _iou_xywh(a: t.List[float], b: t.List[float]) -> float:
     union_area = area_a + area_b - inter_area
 
     return inter_area / union_area if union_area > 0 else 0.0
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def validate_bboxes(ds: Dataset) -> t.List[BboxIssue]:
